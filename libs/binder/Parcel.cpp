@@ -513,7 +513,7 @@ status_t Parcel::appendFrom(const Parcel *parcel, size_t offset, size_t len)
         // grow objects
         if (mObjectsCapacity < mObjectsSize + numObjects) {
             size_t newSize = ((mObjectsSize + numObjects)*3)/2;
-            if (newSize < mObjectsSize) return NO_MEMORY;   // overflow
+            if (newSize*sizeof(binder_size_t) < mObjectsSize) return NO_MEMORY;   // overflow
             binder_size_t *objects =
                 (binder_size_t*)realloc(mObjects, newSize*sizeof(binder_size_t));
             if (objects == (binder_size_t*)0) {
@@ -1065,7 +1065,7 @@ restart_write:
     }
     if (!enoughObjects) {
         size_t newSize = ((mObjectsSize+2)*3)/2;
-        if (newSize < mObjectsSize) return NO_MEMORY;   // overflow
+        if (newSize*sizeof(binder_size_t) < mObjectsSize) return NO_MEMORY;   // overflow
         binder_size_t* objects = (binder_size_t*)realloc(mObjects, newSize*sizeof(binder_size_t));
         if (objects == NULL) return NO_MEMORY;
         mObjects = objects;
@@ -1377,7 +1377,13 @@ native_handle* Parcel::readNativeHandle() const
 
     for (int i=0 ; err==NO_ERROR && i<numFds ; i++) {
         h->data[i] = dup(readFileDescriptor());
-        if (h->data[i] < 0) err = BAD_VALUE;
+        if (h->data[i] < 0) {
+            for (int j = 0; j < i; j++) {
+                close(h->data[j]);
+            }
+            native_handle_delete(h);
+            return 0;
+        }
     }
     err = read(h->data + numFds, sizeof(int)*numInts);
     if (err != NO_ERROR) {
